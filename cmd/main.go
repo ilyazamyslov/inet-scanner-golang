@@ -2,80 +2,25 @@ package main
 
 import (
 	"fmt"
-	"os"
 
-	"github.com/basho/riak-go-client"
+	riak "github.com/tpjg/goriakpbc"
 )
 
-const defaultIp = "192.168.1.69"
-
-/*func insert() (err error) {
-
-	return
-}*/
-
-/*
-   Code samples from:
-   http://docs.basho.com/riak/latest/dev/using/2i/
-   make sure the 'indexes' bucket-type is created using the leveldb backend
-*/
-
 func main() {
-	nodeOpts := &riak.NodeOptions{
-		RemoteAddress: "127.0.0.1:8087",
-	}
-
-	var node *riak.Node
-	var err error
-	if node, err = riak.NewNode(nodeOpts); err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-
-	nodes := []*riak.Node{node}
-	opts := &riak.ClusterOptions{
-		Nodes: nodes,
-	}
-
-	cluster, err := riak.NewCluster(opts)
+	client := riak.New("127.0.0.1:8087")
+	err := client.Connect()
 	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
+		fmt.Println("Cannot connect, is Riak running?")
+		return
 	}
 
-	defer func() {
-		if err := cluster.Stop(); err != nil {
-			fmt.Println(err.Error())
-			os.Exit(1)
-		}
-	}()
+	bucket, _ := client.Bucket("tstriak")
+	obj := bucket.New("tstobj")
+	obj.ContentType = "application/json"
+	obj.Data = []byte("{'field':'value'}")
+	obj.Store()
 
-	if err := cluster.Start(); err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-	obj := &riak.Object{
-		ContentType:     "text/plain",
-		Charset:         "utf-8",
-		ContentEncoding: "utf-8",
-		Value:           []byte("this is a value in Riak"),
-	}
+	fmt.Printf("Stored an object in Riak, vclock = %v\n", obj.Vclock)
 
-	cmd, err := riak.NewStoreValueCommandBuilder().
-		WithBucket("testBucketName").
-		WithContent(obj).
-		Build()
-	if err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-
-	if err := cluster.Execute(cmd); err != nil {
-		fmt.Println(err.Error())
-		os.Exit(1)
-	}
-
-	svc := cmd.(*riak.StoreValueCommand)
-	rsp := svc.Response
-	fmt.Println(rsp.GeneratedKey)
+	client.Close()
 }
