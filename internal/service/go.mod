@@ -1,4 +1,4 @@
-module github.com/ilyazamyslov/inet-scanner-golang
+module github.com/ilyazamyslov/inet-scanner-golang/internal/service
 
 go 1.17
 
