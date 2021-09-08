@@ -8,8 +8,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/go-chi/chi"
-	"github.com/go-chi/chi/middleware"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/ilyazamyslov/inet-scanner-golang/internal/handler"
 	"github.com/ilyazamyslov/inet-scanner-golang/internal/repository"
 	"github.com/ilyazamyslov/inet-scanner-golang/internal/service"
@@ -35,21 +35,24 @@ func main() {
 	defer session.Release()
 
 	dbRepo := &repository.DB{DB: session}
-	service := service.New(&logger, dbRepo)
-	h := handler.New(&logger, service)
+	service := service.NewScannerService(&logger, dbRepo)
+	//h := handler.New(&logger, service)
+	scanHostHandler := handler.NewHostScan(&logger, service)
+	scanNetworkHandler := handler.NewNetworkScan(&logger, service)
 
 	r.Route("/", func(r chi.Router) {
 		r.Use(middleware.RequestLogger(&handler.LogFormatter{Logger: &logger}))
 		r.Use(middleware.Recoverer)
-		r.Method(http.MethodGet, handler.Path, h)
+		r.Method(http.MethodGet, handler.ScanHostPath, scanHostHandler)
+		r.Method(http.MethodGet, handler.ScanNetworkPath, scanNetworkHandler)
 	})
 
 	srv := http.Server{
-		Addr:    "8080",
+		Addr:    ":8080",
 		Handler: r,
 	}
 	go func() {
-		logger.Info().Msgf("Server is listening on :%d", cfg.Port)
+		logger.Info().Msgf("Server is listening on :%d", 8080)
 		err := srv.ListenAndServe()
 		if err != nil && err != http.ErrServerClosed {
 			logger.Fatal().Err(err).Msg("Server error")
