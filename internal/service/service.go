@@ -9,11 +9,12 @@ import (
 	"time"
 
 	"github.com/dean2021/go-nmap"
+	"github.com/ilyazamyslov/inet-scanner-golang/internal/model"
 )
 
 func scanByIp(ip string, wg *sync.WaitGroup) ([]byte, error) {
 	defer wg.Done()
-	var object Host
+	var object model.Host
 	n := nmap.New()
 
 	args := []string{"-O"}
