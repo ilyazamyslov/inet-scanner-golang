@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -10,10 +11,35 @@ import (
 
 	"github.com/dean2021/go-nmap"
 	"github.com/ilyazamyslov/inet-scanner-golang/internal/model"
+	"github.com/rs/zerolog"
 )
 
-func scanByIp(ip string, wg *sync.WaitGroup) ([]byte, error) {
-	defer wg.Done()
+type Service struct {
+	logger *zerolog.Logger
+	repo   Repository
+	client HTTPClient
+}
+
+type Repository interface {
+	Load(string) (model.Host, bool)
+	Store(string, model.Host)
+}
+
+type HTTPClient interface {
+	Do(req *http.Request) (*http.Response, error)
+}
+
+func New(logger *zerolog.Logger, repo Repository) *Service {
+	return &Service{
+		logger: logger,
+		repo:   repo,
+		client: &http.Client{
+			Timeout: time.Duration(time.Minute),
+		},
+	}
+}
+
+func ScanByIp(ip string) ([]byte, error) {
 	var object model.Host
 	n := nmap.New()
 
@@ -24,10 +50,12 @@ func scanByIp(ip string, wg *sync.WaitGroup) ([]byte, error) {
 
 	err := n.Run()
 	if err != nil {
+		fmt.Println(ip, err)
 		return nil, err
 	}
 	result, err := n.Parse()
 	if err != nil {
+		fmt.Println(ip, err)
 		return nil, err
 	}
 
@@ -46,14 +74,14 @@ func scanByIp(ip string, wg *sync.WaitGroup) ([]byte, error) {
 			}
 			object.Os = osName
 			for _, port := range host.Ports {
-				object.Ports = append(object.Ports, Service{port.PortId, port.Service.Name})
+				object.Ports = append(object.Ports, model.Service{PortNum: port.PortId, Name: port.Service.Name})
 			}
 		}
 	}
 	object.Timestamp = time.Now().Unix()
 	jsonObject, err := json.Marshal(object)
 	if err != nil {
-		fmt.Println(err)
+		fmt.Println(ip, err)
 		return nil, err
 	}
 	fmt.Println(object)
@@ -95,7 +123,7 @@ func mask(lenMask int) (mask uint32, err error) {
 	return mask, nil
 }
 
-func scanNetwork(ip string, lenMask int) ([]byte, error) {
+func ScanNetwork(ip string, lenMask int) ([][]byte, error) {
 	intIp, err := strIp2Int(ip)
 	if err != nil {
 		return nil, err
@@ -111,11 +139,37 @@ func scanNetwork(ip string, lenMask int) ([]byte, error) {
 		listHost = append(listHost, intIp2Str(currentHost))
 		currentHost += 1
 	}
-	var wg sync.WaitGroup
-	wg.Add(len(listHost))
-	for _, host := range listHost {
-		go scanByIp(host, &wg)
+	jHosts := make([][]byte, len(listHost))
+	chunks := len(listHost) / 16
+	mod := len(listHost) % 16
+	if mod != 0 {
+		chunks += 1
 	}
-	wg.Wait()
-	return nil, nil
+	//split all hosts to chunck
+	//else we have error:
+	//"pipe2: too many open files"
+	chunksHosts := make([][]string, chunks)
+	for i := 0; i < chunks; i++ {
+		if i == chunks-1 {
+			chunksHosts[i] = listHost[i*16:]
+		} else {
+			chunksHosts[i] = listHost[i*16 : (i+1)*16]
+		}
+	}
+	for i, chunkHost := range chunksHosts {
+		var wg sync.WaitGroup
+		for j, host := range chunkHost {
+			wg.Add(1)
+			go func(host string, j int) {
+				defer wg.Done()
+				jHost, err := ScanByIp(host)
+				if err != nil {
+					return
+				}
+				jHosts[i*16+j] = jHost
+			}(host, j)
+		}
+		wg.Wait()
+	}
+	return jHosts, nil
 }
