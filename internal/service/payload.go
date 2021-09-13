@@ -68,6 +68,7 @@ func scanHost(ip string) (model.Host, error) {
 
 	var (
 		osName     string
+		hostName   string
 		osAccuracy = 0
 	)
 	for _, host := range result.Hosts {
@@ -75,11 +76,15 @@ func scanHost(ip string) (model.Host, error) {
 			for _, osMatch := range host.Os.OsMatches {
 				tempOsAccuracy, _ := strconv.Atoi(osMatch.Accuracy)
 				if tempOsAccuracy >= osAccuracy {
-					osName = osMatch.Name
+					osName += osMatch.Name + " "
 					osAccuracy = tempOsAccuracy
 				}
 			}
 			object.Os = osName
+			for _, hostMatch := range host.Hostnames {
+				hostName += hostMatch.Name
+			}
+			object.Name = hostName
 			for _, port := range host.Ports {
 				object.Ports = append(object.Ports, model.Service{PortNum: port.PortId, Name: port.Service.Name})
 			}
@@ -89,7 +94,7 @@ func scanHost(ip string) (model.Host, error) {
 	return object, nil
 }
 
-func scanNetwork(ip string, lenMask int) ([]model.Host, error) {
+func listHosts(ip string, lenMask int) ([]string, error) {
 	intIp, err := strIp2Int(ip)
 	if err != nil {
 		return nil, err
@@ -105,9 +110,28 @@ func scanNetwork(ip string, lenMask int) ([]model.Host, error) {
 		listHost = append(listHost, intIp2Str(currentHost))
 		currentHost += 1
 	}
-	hosts := make([]model.Host, len(listHost))
-	chunks := len(listHost) / 16
-	mod := len(listHost) % 16
+	return listHost, nil
+}
+
+func scanNetwork(ip []string) ([]model.Host, error) {
+	/*intIp, err := strIp2Int(ip)
+	if err != nil {
+		return nil, err
+	}
+	mask, err := mask(lenMask)
+	if err != nil {
+		return nil, err
+	}
+	network := intIp & mask
+	currentHost := network + 1
+	listHost := []string{}
+	for (currentHost & mask) == network {
+		listHost = append(listHost, intIp2Str(currentHost))
+		currentHost += 1
+	}*/
+	hosts := make([]model.Host, len(ip))
+	chunks := len(ip) / 16
+	mod := len(ip) % 16
 	if mod != 0 {
 		chunks += 1
 	}
@@ -117,9 +141,9 @@ func scanNetwork(ip string, lenMask int) ([]model.Host, error) {
 	chunksHosts := make([][]string, chunks)
 	for i := 0; i < chunks; i++ {
 		if i == chunks-1 {
-			chunksHosts[i] = listHost[i*16:]
+			chunksHosts[i] = ip[i*16:]
 		} else {
-			chunksHosts[i] = listHost[i*16 : (i+1)*16]
+			chunksHosts[i] = ip[i*16 : (i+1)*16]
 		}
 	}
 	for i, chunkHost := range chunksHosts {

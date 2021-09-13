@@ -11,6 +11,7 @@ type Service struct {
 
 type Host struct {
 	Ip        string    `json:"ip"`
+	Name      string    `json:"name"`
 	Os        string    `json:"os"`
 	Timestamp int64     `json:"timestamp"`
 	Ports     []Service `json:"service"`

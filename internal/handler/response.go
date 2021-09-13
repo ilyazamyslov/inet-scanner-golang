@@ -21,14 +21,10 @@ func writeResponse(w http.ResponseWriter, code int, v interface{}) {
 
 type Handler struct {
 	logger  *zerolog.Logger
-	service Service
+	service ScannerService
 }
 
-type Service interface {
-	//ScanByIp(string, time.Time) (*model.Price, error)
-}
-
-func New(logger *zerolog.Logger, srv Service) *Handler {
+func New(logger *zerolog.Logger, srv ScannerService) *Handler {
 	return &Handler{
 		logger:  logger,
 		service: srv,

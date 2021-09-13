@@ -19,24 +19,16 @@ import (
 
 func main() {
 	logger := zerolog.New(os.Stdout).With().Timestamp().Logger()
-
-	shutdown := make(chan os.Signal, 1)
-	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
-	defer signal.Stop(shutdown)
-
 	r := chi.NewRouter()
 	addrs := []string{"127.0.0.1:8087"}
-	client := riaken_core.NewClient(addrs, 1)
+	client := riaken_core.NewClient(addrs, 16)
 	if err := client.Dial(); err != nil {
 		logger.Fatal().Err(err).Msg("DB initializing error") //(err.Error()) // all nodes are down
 	}
 	defer client.Close()
-	session := client.Session()
-	defer session.Release()
 
-	dbRepo := &repository.DB{DB: session}
+	dbRepo := repository.NewDB(client, &logger)
 	service := service.NewScannerService(&logger, dbRepo)
-	//h := handler.New(&logger, service)
 	scanHostHandler := handler.NewHostScan(&logger, service)
 	scanNetworkHandler := handler.NewNetworkScan(&logger, service)
 
@@ -51,6 +43,11 @@ func main() {
 		Addr:    ":8080",
 		Handler: r,
 	}
+
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(shutdown)
+
 	go func() {
 		logger.Info().Msgf("Server is listening on :%d", 8080)
 		err := srv.ListenAndServe()
@@ -61,15 +58,12 @@ func main() {
 	<-shutdown
 
 	logger.Info().Msg("Shutdown signal received")
-
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer func() {
 		cancel()
 	}()
-
 	if err := srv.Shutdown(ctx); err != nil {
 		logger.Fatal().Err(err).Msg("Server shutdown error")
 	}
-
 	logger.Info().Msg("Server stopped gracefully")
 }

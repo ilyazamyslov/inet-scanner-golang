@@ -16,7 +16,7 @@ type ScannerService struct {
 
 type Repository interface {
 	Load(string) (model.Host, bool)
-	Store(string, model.Host)
+	Store(string, model.Host) error
 }
 
 type HTTPClient interface {
@@ -34,20 +34,48 @@ func NewScannerService(logger *zerolog.Logger, repo Repository) *ScannerService 
 }
 
 func (s *ScannerService) ScanHost(ip string) (model.Host, error) {
-	return scanHost(ip)
+	if host, ok := s.repo.Load(ip); ok {
+		return host, nil
+	}
+	host, err := scanHost(ip)
+	if err != nil {
+		return host, err
+	}
+	err = s.repo.Store(ip, host)
+	if err != nil {
+		return host, err
+	}
+	return host, nil
 }
 
 func (s *ScannerService) ScanNetwork(ip string, lenMask int) ([]model.Host, error) {
-	/*req, err := http.NewRequest(http.MethodGet, fmt.Sprintf(stockAPIFormat, ticker, s.apiKey), nil)
+	listHosts, err := listHosts(ip, lenMask)
 	if err != nil {
-		return nil, err
+		return []model.Host{{}}, nil
+	}
+	var result []model.Host
+	var listNeedScanHost []string
+	for _, val := range listHosts {
+		if host, ok := s.repo.Load(val); ok {
+			s.logger.Info().Msg("Hit cache " + val)
+			result = append(result, host)
+		} else {
+			listNeedScanHost = append(listNeedScanHost, val)
+		}
 	}
 
-	resp, err := s.client.Do(req)
+	scannedHosts, err := scanNetwork(listNeedScanHost)
 	if err != nil {
-		return nil, err
+		return result, err
 	}
-	defer resp.Body.Close()*/
 
-	return scanNetwork(ip, lenMask)
+	for _, val := range scannedHosts {
+		err := s.repo.Store(val.Ip, val)
+		if err != nil {
+			return result, err
+		}
+		result = append(result, val)
+	}
+
+	return result, nil
 }
