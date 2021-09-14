@@ -28,15 +28,20 @@ func main() {
 	defer client.Close()
 
 	dbRepo := repository.NewDB(client, &logger)
-	service := service.NewScannerService(&logger, dbRepo)
-	scanHostHandler := handler.NewHostScan(&logger, service)
-	scanNetworkHandler := handler.NewNetworkScan(&logger, service)
+	scannerService := service.NewScannerService(&logger, dbRepo)
+	scanHostHandler := handler.NewHostScan(&logger, scannerService)
+	scanNetworkHandler := handler.NewNetworkScan(&logger, scannerService)
+
+	labServise := service.NewLabService(&logger, dbRepo)
+	labHandler := handler.NewLab(&logger, labServise)
 
 	r.Route("/", func(r chi.Router) {
 		r.Use(middleware.RequestLogger(&handler.LogFormatter{Logger: &logger}))
 		r.Use(middleware.Recoverer)
 		r.Method(http.MethodGet, handler.ScanHostPath, scanHostHandler)
 		r.Method(http.MethodGet, handler.ScanNetworkPath, scanNetworkHandler)
+
+		r.Method(http.MethodGet, handler.LabPath, labHandler)
 	})
 
 	srv := http.Server{

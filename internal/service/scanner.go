@@ -17,6 +17,11 @@ type ScannerService struct {
 type Repository interface {
 	Load(string) (model.Host, bool)
 	Store(string, model.Host) error
+	//for lab
+	Query1(string, string) []model.Host
+	Query2(string, string) []model.Host
+	Query3(string, string) []model.Host
+	Query4(string, string) int
 }
 
 type HTTPClient interface {

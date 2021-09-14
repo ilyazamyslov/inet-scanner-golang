@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/dean2021/go-nmap"
@@ -13,16 +12,16 @@ import (
 
 func strIp2Int(ip string) (uint32, error) {
 	sliceStrIP := strings.Split(ip, ".")
-	sliceIntIP := make([]uint8, len(sliceStrIP))
+	sliceIntIP := make([]uint32, len(sliceStrIP))
 	for i, s := range sliceStrIP {
 		value, err := strconv.Atoi(s)
 		if err != nil {
 			fmt.Println(err)
 			return 0, err
 		}
-		sliceIntIP[i] = uint8(value)
+		sliceIntIP[i] = uint32(value)
 	}
-	var intIP uint32 = (uint32(sliceIntIP[0]) << 24) | (uint32(sliceIntIP[1]) << 16) | (uint32(sliceIntIP[2]) << 8) | uint32(sliceIntIP[3])
+	var intIP uint32 = (sliceIntIP[0] << 24) | (sliceIntIP[1] << 16) | (sliceIntIP[2] << 8) | sliceIntIP[3]
 	return intIP, nil
 }
 
@@ -49,12 +48,10 @@ func mask(lenMask int) (mask uint32, err error) {
 func scanHost(ip string) (model.Host, error) {
 	var object model.Host
 	n := nmap.New()
-
 	args := []string{"-O"}
 	n.SetArgs(args...)
 	n.SetHosts(ip)
 	object.Ip = ip
-
 	err := n.Run()
 	if err != nil {
 		fmt.Println(ip, err)
@@ -65,7 +62,6 @@ func scanHost(ip string) (model.Host, error) {
 		fmt.Println(ip, err)
 		return object, err
 	}
-
 	var (
 		osName     string
 		hostName   string
@@ -86,7 +82,10 @@ func scanHost(ip string) (model.Host, error) {
 			}
 			object.Name = hostName
 			for _, port := range host.Ports {
-				object.Ports = append(object.Ports, model.Service{PortNum: port.PortId, Name: port.Service.Name})
+				object.Ports = append(object.Ports, model.Service{
+					PortNum: port.PortId,
+					Name:    port.Service.Name,
+				})
 			}
 		}
 	}
@@ -114,52 +113,18 @@ func listHosts(ip string, lenMask int) ([]string, error) {
 }
 
 func scanNetwork(ip []string) ([]model.Host, error) {
-	/*intIp, err := strIp2Int(ip)
-	if err != nil {
-		return nil, err
-	}
-	mask, err := mask(lenMask)
-	if err != nil {
-		return nil, err
-	}
-	network := intIp & mask
-	currentHost := network + 1
-	listHost := []string{}
-	for (currentHost & mask) == network {
-		listHost = append(listHost, intIp2Str(currentHost))
-		currentHost += 1
-	}*/
 	hosts := make([]model.Host, len(ip))
-	chunks := len(ip) / 16
-	mod := len(ip) % 16
-	if mod != 0 {
-		chunks += 1
-	}
-	//split all hosts to chunck
-	//else we have error:
-	//"pipe2: too many open files"
-	chunksHosts := make([][]string, chunks)
-	for i := 0; i < chunks; i++ {
-		if i == chunks-1 {
-			chunksHosts[i] = ip[i*16:]
-		} else {
-			chunksHosts[i] = ip[i*16 : (i+1)*16]
-		}
-	}
-	for i, chunkHost := range chunksHosts {
-		var wg sync.WaitGroup
-		for j, host := range chunkHost {
-			wg.Add(1)
-			go func(host string, j int) {
-				defer wg.Done()
-				hostObject, err := scanHost(host)
-				if err != nil {
-					return
-				}
-				hosts[i*16+j] = hostObject
-			}(host, j)
-		}
-		wg.Wait()
+	sem := make(chan struct{}, 64)
+	for i, host := range ip {
+		sem <- struct{}{}
+		go func(host string, i int) {
+			hostObject, err := scanHost(host)
+			if err != nil {
+				return
+			}
+			hosts[i] = hostObject
+			<-sem
+		}(host, i)
 	}
 	return hosts, nil
 }
